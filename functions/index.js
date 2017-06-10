@@ -18,6 +18,7 @@ exports.addOutgo = functions.database
     */
     .ref('/outgoes/{pushId}')
     .onWrite(event => {
+      //  console.log("Starting function version 0.3.0...");
         let budgetId = null;
         const outgoId = event.params.pushId;
         const amount = event.data.val().amount;
@@ -27,10 +28,22 @@ exports.addOutgo = functions.database
         return blRef.once('value')
             .then(snap => {
                 const budgetLine = snap.val();
+                if (!budgetLine.hasOwnProperty('noOutgoes')) {
+                    //jeżeli nie ma żadnego outgo to utwórz noOutgoes z 0
+                    Object.assign(budgetLine, { noOutgoes: 0 });
+                }
                 budgetLine.noOutgoes = ++budgetLine.noOutgoes;
                 budgetLine.cashLeft -= amount;
                 budgetId = budgetLine.budgetId;
-                Object.assign(budgetLine.outgoes, { [outgoId]: true });
+                if (!budgetLine.hasOwnProperty('outgoes')) {
+                    //jeżeli nie ma żadnego outgo to utwórz obiekt
+                    console.log("Nie ma property outgoes!");
+                    Object.assign(budgetLine, { outges: { [outgoId]: true } });
+                } else {
+                    //w przeciwnym wypadku dodaj tylko referencję
+                    Object.assign(budgetLine.outgoes, { [outgoId]: true });
+                }
+             //   console.log("budgetLine from Cloud Functions: ", budgetLine);
                 return blRef.set(budgetLine)
             }).then(() => {
                 return root.child(`/budgets/${budgetId}`).once('value')
