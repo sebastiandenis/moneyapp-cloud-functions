@@ -37,7 +37,7 @@ exports.addOutgo = functions.database
                 budgetId = budgetLine.budgetId;
                 if (!budgetLine.hasOwnProperty('outgoes')) {
                     //jeżeli nie ma żadnego outgo to utwórz obiekt
-                    console.log("Nie ma property outgoes!");
+               //     console.log("Nie ma property outgoes!");
                     Object.assign(budgetLine, { outges: { [outgoId]: true } });
                 } else {
                     //w przeciwnym wypadku dodaj tylko referencję
@@ -52,6 +52,51 @@ exports.addOutgo = functions.database
                 const budget = snap.val();
                 budget.cashLeft -= amount;
                 return root.child(`/budgets/${budgetId}`).set(budget)
+            })
+            .catch(error => {
+                console.log(error);
+            })
+
+    })
+
+    exports.addSavingItem = functions.database
+    /*
+        Funkcja wywoaływana podczas dodania nowej pozycji w bazie savingItems
+        1) dodaj saving ID do odpowiedniej linii
+        2) zwiększ w linii cashLeft
+        4) w savings zmniejsz cashLeft (total)
+    */
+    .ref('/savingItems/{pushId}')
+    .onWrite(event => {
+      //  console.log("Starting function version 0.4.0...");
+        let savingId = null;
+        const savingItemId = event.params.pushId;
+        const amount = event.data.val().amount;
+        const savingLineId = event.data.val().savingLineId;
+        const root = event.data.ref.root;
+        const slRef = root.child(`/savingLines/${savingLineId}`);
+        return slRef.once('value')
+            .then(snap => {
+                const savingLine = snap.val();
+                savingLine.cashLeft += amount;
+                savingId = savingLine.savingId;
+                if (!savingLine.hasOwnProperty('savingItems')) {
+                    //jeżeli nie ma żadnego outgo to utwórz obiekt
+                  //  console.log("Nie ma property savingItems!");
+                    Object.assign(savingLine, { savingItems: { [savingItemId]: true } });
+                } else {
+                    //w przeciwnym wypadku dodaj tylko referencję
+                    Object.assign(savingLine.savingItems, { [savingItemId]: true });
+                }
+             //   console.log("savingLine from Cloud Functions: ", savingLine);
+                return slRef.set(savingLine)
+            }).then(() => {
+                return root.child(`/savings/${savingId}`).once('value')
+            })
+            .then(snap => {
+                const saving = snap.val();
+                saving.totalCash += amount;
+                return root.child(`/savings/${savingId}`).set(saving)
             })
             .catch(error => {
                 console.log(error);
