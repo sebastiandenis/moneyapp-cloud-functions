@@ -1,3 +1,7 @@
+0.7.0
+  * Update total savings after delete saving line
+  * Couple errors fixed
+
 0.6.0
   * Edit saving line function
 

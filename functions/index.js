@@ -1,6 +1,6 @@
 const functions = require('firebase-functions');
 
-//version: 0.5.0
+//version: 0.6.1
 
 
 /******************************************************************
@@ -64,6 +64,10 @@ exports.removeSavingLine = functions.database
         if (event.data.exists()) {
             return; //wyjdź jeżeli dotyczy zapisu
         }
+
+        
+
+
         const savingId = event.params.pushId;
         const savingLineId = event.params.pushId2;
 
@@ -72,10 +76,12 @@ exports.removeSavingLine = functions.database
 
         const root = event.data.ref.root;
         const slRef = root.child(`/savingLines/${savingLineId}`);
+        let slCashLeft = 0;
         let savingItemIds = [];
         return slRef.once('value')
             .then(snap => {
                 const savingLine = snap.val();
+                slCashLeft = savingLine.cashLeft;
                 if (savingLine && savingLine.hasOwnProperty('savingItems')) {
                     Object.keys(savingLine.savingItems).forEach(function (key) {
                         return root.child(`/savingItems/${key}`).remove();
@@ -83,6 +89,15 @@ exports.removeSavingLine = functions.database
                 }
 
                 return slRef.remove();
+            })
+            .then(() => {
+                return root.child(`/savings/${savingId}`).once('value')
+            })
+            .then(snap => {
+                const saving = snap.val();
+                console.log("Total cash przed redukcją: ", saving.totalCash, ", redukujemy o: ", slCashLeft);
+                saving.totalCash -= slCashLeft;
+                return root.child(`/savings/${savingId}`).set(saving)
             })
             .catch(error => {
                 console.log(error);
@@ -104,9 +119,21 @@ exports.addSavingItem = functions.database
     5) w odpowiedniej linii dodaj savingItem
 */
 
+        if (event.data.previous.exists()) {
+            return; //tylko gdy dodajemy nowe
+        }
+
+           // Exit when the data is deleted.
+        if (!event.data.exists()) {
+            return;
+        }
+
+
+
         let savingId = null;
         const savingItemId = event.params.pushId;
         const amount = event.data.val().amount;
+        //    console.log("Amount w saving item id: ", savingItemId, " = ", amount);
         const savingLineId = event.data.val().savingLineId;
         const root = event.data.ref.root;
         const slRef = root.child(`/savingLines/${savingLineId}`);
@@ -117,25 +144,13 @@ exports.addSavingItem = functions.database
                 savingId = savingLine.savingId;
                 if (!savingLine.hasOwnProperty('savingItems')) {
                     //jeżeli nie ma żadnego outgo to utwórz obiekt
-                    //  console.log("Nie ma property savingItems!");
                     Object.assign(savingLine, { savingItems: { [savingItemId]: true } });
                 } else {
                     //w przeciwnym wypadku dodaj tylko referencję
                     Object.assign(savingLine.savingItems, { [savingItemId]: true });
                 }
-                //   console.log("savingLine from Cloud Functions: ", savingLine);
                 return slRef.set(savingLine)
             })
-            /*
-            .then(() => {
-                return root.child(`/savings/${savingId}`).once('value')
-            })
-            .then(snap => {
-                const saving = snap.val();
-                saving.totalCash += amount;
-                return root.child(`/savings/${savingId}`).set(saving)
-            })
-            */
             .catch(error => {
                 console.log(error);
             })
@@ -162,6 +177,16 @@ exports.addOutgo = functions.database
     3) zwiększ w linii noOutgoes
     4) w budget zmniejsz cashLeft
 */
+
+        if (event.data.previous.exists()) {
+            return; //tylko gdy dodajemy nowe
+        }
+           // Exit when the data is deleted.
+        if (!event.data.exists()) {
+            return;
+        }
+
+
         let budgetId = null;
         const outgoId = event.params.pushId;
         const amount = event.data.val().amount;
