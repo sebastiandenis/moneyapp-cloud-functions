@@ -1,3 +1,6 @@
+0.6.0
+  * Edit saving line function
+
 0.5.0
   * Add remove saving line function
 

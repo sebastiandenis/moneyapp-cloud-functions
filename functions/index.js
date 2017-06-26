@@ -9,6 +9,49 @@ const functions = require('firebase-functions');
 
  *******************************************************************/
 
+
+
+exports.editSavingLine = functions.database
+    .ref('/savingLines/{pushId}')
+    .onWrite(event => {
+        /*
+    Funkcja wywoaływana podczas dodania nowej lub edycji istniejącej linii
+    1) dodaj linię do savings (jeżeli dodanie)
+    2) zwiększ w savings cash left
+    3) różnicę pomiędzy nową wartością linii, a wartością w savings dodaj jako savingItem
+*/
+        // Only edit data when it is edited.
+        if (!event.data.previous.exists()) {
+            return;
+        }
+        // Exit when the data is deleted.
+        if (!event.data.exists()) {
+            return;
+        }
+
+
+        const savingId = event.data.val().savingId;
+        const savingLineId = event.params.pushId;
+        const prevAmount = event.data.previous.val().cashLeft;
+        const newAmount = event.data.val().cashLeft;
+
+
+        const root = event.data.ref.root;
+        const sRef = root.child(`/savings/${savingId}`);
+        return sRef.once('value')
+            .then(snap => {
+                const saving = snap.val();
+                saving.totalCash += (newAmount - prevAmount); //dodaj różnicę
+                return sRef.set(saving)
+            })
+            .catch(error => {
+                console.log(error);
+            })
+
+    });
+
+
+
 exports.removeSavingLine = functions.database
     .ref('/savings/{pushId}/lines/{pushId2}')
     .onWrite(event => {
@@ -46,6 +89,59 @@ exports.removeSavingLine = functions.database
             })
 
     });
+
+
+
+
+exports.addSavingItem = functions.database
+    .ref('/savingItems/{pushId}')
+    .onWrite(event => {
+        /*
+    Funkcja wywoaływana podczas dodania nowej pozycji w bazie savingItems
+    1) dodaj saving ID do odpowiedniej linii
+    2) zwiększ w linii cashLeft
+    4) w savings zmniejsz cashLeft (total)
+    5) w odpowiedniej linii dodaj savingItem
+*/
+
+        let savingId = null;
+        const savingItemId = event.params.pushId;
+        const amount = event.data.val().amount;
+        const savingLineId = event.data.val().savingLineId;
+        const root = event.data.ref.root;
+        const slRef = root.child(`/savingLines/${savingLineId}`);
+        return slRef.once('value')
+            .then(snap => {
+                const savingLine = snap.val();
+                savingLine.cashLeft += amount;
+                savingId = savingLine.savingId;
+                if (!savingLine.hasOwnProperty('savingItems')) {
+                    //jeżeli nie ma żadnego outgo to utwórz obiekt
+                    //  console.log("Nie ma property savingItems!");
+                    Object.assign(savingLine, { savingItems: { [savingItemId]: true } });
+                } else {
+                    //w przeciwnym wypadku dodaj tylko referencję
+                    Object.assign(savingLine.savingItems, { [savingItemId]: true });
+                }
+                //   console.log("savingLine from Cloud Functions: ", savingLine);
+                return slRef.set(savingLine)
+            })
+            /*
+            .then(() => {
+                return root.child(`/savings/${savingId}`).once('value')
+            })
+            .then(snap => {
+                const saving = snap.val();
+                saving.totalCash += amount;
+                return root.child(`/savings/${savingId}`).set(saving)
+            })
+            */
+            .catch(error => {
+                console.log(error);
+            })
+
+    });
+
 
 
 
@@ -106,48 +202,3 @@ exports.addOutgo = functions.database
 
     });
 
-exports.addSavingItem = functions.database
-    .ref('/savingItems/{pushId}')
-    .onWrite(event => {
-        /*
-    Funkcja wywoaływana podczas dodania nowej pozycji w bazie savingItems
-    1) dodaj saving ID do odpowiedniej linii
-    2) zwiększ w linii cashLeft
-    4) w savings zmniejsz cashLeft (total)
-    5) w odpowiedniej linii dodaj savingItem
-*/
-
-        let savingId = null;
-        const savingItemId = event.params.pushId;
-        const amount = event.data.val().amount;
-        const savingLineId = event.data.val().savingLineId;
-        const root = event.data.ref.root;
-        const slRef = root.child(`/savingLines/${savingLineId}`);
-        return slRef.once('value')
-            .then(snap => {
-                const savingLine = snap.val();
-                savingLine.cashLeft += amount;
-                savingId = savingLine.savingId;
-                if (!savingLine.hasOwnProperty('savingItems')) {
-                    //jeżeli nie ma żadnego outgo to utwórz obiekt
-                    //  console.log("Nie ma property savingItems!");
-                    Object.assign(savingLine, { savingItems: { [savingItemId]: true } });
-                } else {
-                    //w przeciwnym wypadku dodaj tylko referencję
-                    Object.assign(savingLine.savingItems, { [savingItemId]: true });
-                }
-                //   console.log("savingLine from Cloud Functions: ", savingLine);
-                return slRef.set(savingLine)
-            }).then(() => {
-                return root.child(`/savings/${savingId}`).once('value')
-            })
-            .then(snap => {
-                const saving = snap.val();
-                saving.totalCash += amount;
-                return root.child(`/savings/${savingId}`).set(saving)
-            })
-            .catch(error => {
-                console.log(error);
-            })
-
-    });
