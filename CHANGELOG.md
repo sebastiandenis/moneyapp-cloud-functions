@@ -1,3 +1,7 @@
+0.8.0
+  * Code revision
+  * Add saving line function
+
 0.7.0
   * Update total savings after delete saving line
   * Couple errors fixed

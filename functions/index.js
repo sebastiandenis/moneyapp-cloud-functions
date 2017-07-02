@@ -1,6 +1,6 @@
 const functions = require('firebase-functions');
 
-//version: 0.6.1
+//version: 0.8.0
 
 
 /******************************************************************
@@ -9,6 +9,64 @@ const functions = require('firebase-functions');
 
  *******************************************************************/
 
+exports.addSavingLine = functions.database
+    .ref('/savingLines/{pushId}')
+    .onWrite(event => {
+        /*
+    Funkcja wywoaływana podczas dodania nowej linii
+    1) dodaj linię do savings (jeżeli dodanie)
+    2) zwiększ w savings cash left
+    3) różnicę pomiędzy nową wartością linii, a wartością w savings dodaj jako savingItem
+    
+*/
+
+        // Only add data when it is new.
+        if (event.data.previous.exists()) {
+            return;
+        }
+        // Exit when the data is deleted.
+        if (!event.data.exists()) {
+            return;
+        }
+
+
+        const savingId = event.data.val().savingId;
+        const savingLineId = event.params.pushId;
+        const newAmount = event.data.val().cashLeft;
+
+
+        const root = event.data.ref.root;
+        const sRef = root.child(`/savings/${savingId}`);
+
+        const newSavingItemKey = root.child(`/savingItems/`).push().key;
+        const siRef = root.child(`/savingItems/${newSavingItemKey}`);
+        // console.log("New saving item key: ", newSavingItemKey);
+        return sRef.once('value')
+            .then(snap => {
+                const saving = snap.val();
+                saving.totalCash += newAmount //dodaj różnicę
+                if (!saving.hasOwnProperty('lines')) {
+                    //jeżeli nie ma żadnej linii to utwórz obiekt
+                    Object.assign(saving, { lines: { [savingLineId]: true } });
+                } else {
+                    //w przeciwnym wypadku dodaj tylko referencję
+                    Object.assign(saving.lines, { [savingLineId]: true });
+                }
+                savPromise = sRef.set(saving);
+                let newSavingItem = {};
+                Object.assign(newSavingItem, { amount: newAmount, savingLineId: savingLineId, initial: true });
+                siPromise = siRef.set(newSavingItem);
+
+
+
+
+                return Promise.all([savPromise, siPromise]);
+            })
+            .catch(error => {
+                console.log(error);
+            })
+
+    });
 
 
 exports.editSavingLine = functions.database
@@ -19,7 +77,10 @@ exports.editSavingLine = functions.database
     1) dodaj linię do savings (jeżeli dodanie)
     2) zwiększ w savings cash left
     3) różnicę pomiędzy nową wartością linii, a wartością w savings dodaj jako savingItem
+
+    
 */
+
         // Only edit data when it is edited.
         if (!event.data.previous.exists()) {
             return;
@@ -65,7 +126,7 @@ exports.removeSavingLine = functions.database
             return; //wyjdź jeżeli dotyczy zapisu
         }
 
-        
+
 
 
         const savingId = event.params.pushId;
@@ -78,24 +139,27 @@ exports.removeSavingLine = functions.database
         const slRef = root.child(`/savingLines/${savingLineId}`);
         let slCashLeft = 0;
         let savingItemIds = [];
+        const promisesArray = [];
         return slRef.once('value')
             .then(snap => {
                 const savingLine = snap.val();
                 slCashLeft = savingLine.cashLeft;
                 if (savingLine && savingLine.hasOwnProperty('savingItems')) {
                     Object.keys(savingLine.savingItems).forEach(function (key) {
-                        return root.child(`/savingItems/${key}`).remove();
+                        promisesArray.push(root.child(`/savingItems/${key}`).remove());
+                        //   return root.child(`/savingItems/${key}`).remove();
                     });
                 }
-
-                return slRef.remove();
+                //     console.log("Rozmiar tabei promisesArray: ", promisesArray.length);
+                promisesArray.push(slRef.remove());
+                return Promise.all(promisesArray);
             })
             .then(() => {
                 return root.child(`/savings/${savingId}`).once('value')
             })
             .then(snap => {
                 const saving = snap.val();
-                console.log("Total cash przed redukcją: ", saving.totalCash, ", redukujemy o: ", slCashLeft);
+                // console.log("Total cash przed redukcją: ", saving.totalCash, ", redukujemy o: ", slCashLeft);
                 saving.totalCash -= slCashLeft;
                 return root.child(`/savings/${savingId}`).set(saving)
             })
@@ -123,10 +187,15 @@ exports.addSavingItem = functions.database
             return; //tylko gdy dodajemy nowe
         }
 
-           // Exit when the data is deleted.
+        // Exit when the data is deleted.
         if (!event.data.exists()) {
             return;
         }
+
+        if(event.data.val().initial){
+            return;
+        }
+
 
 
 
@@ -181,7 +250,7 @@ exports.addOutgo = functions.database
         if (event.data.previous.exists()) {
             return; //tylko gdy dodajemy nowe
         }
-           // Exit when the data is deleted.
+        // Exit when the data is deleted.
         if (!event.data.exists()) {
             return;
         }
