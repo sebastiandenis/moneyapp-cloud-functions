@@ -1,3 +1,7 @@
+0.9.0
+  * Moving to Typescript
+  * New database triggers: onCreate, onDelete, onUpdate
+
 0.8.0
   * Code revision
   * Add saving line function
