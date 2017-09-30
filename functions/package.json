@@ -1,10 +1,13 @@
 {
   "name": "functions",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Cloud Functions for my Firebase App",
   "dependencies": {
-    "firebase-admin": "~4.2.1",
-    "firebase-functions": "^0.5.7"
+    "firebase-admin": "~5.3.0",
+    "firebase-functions": "^0.6.3"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@types/es6-promise": "0.0.33"
+  }
 }
