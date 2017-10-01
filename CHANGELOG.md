@@ -1,3 +1,6 @@
+0.12.0
+  * Fixing removeSavingsLine
+
 0.9.0
   * Moving to Typescript
   * New database triggers: onCreate, onDelete, onUpdate

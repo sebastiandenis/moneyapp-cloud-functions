@@ -1,7 +1,7 @@
 "use strict";
 exports.__esModule = true;
 var functions = require("firebase-functions");
-//version: 0.9.0
+//version: 0.12.0
 /******************************************************************
 
                     SAVINGS
@@ -26,20 +26,11 @@ Funkcja wywoaływana podczas dodania nowej linii
         .then(function (snap) {
         var savings = snap.val();
         savings.totalCash += newAmount; //dodaj różnicę
-        if (!savings.hasOwnProperty('lines')) {
-            //jeżeli nie ma żadnej linii to utwórz obiekt
-            Object.assign(savings, { lines: (_a = {}, _a[savingsLineId] = true, _a) });
-        }
-        else {
-            //w przeciwnym wypadku dodaj tylko referencję
-            Object.assign(savings.lines, (_b = {}, _b[savingsLineId] = true, _b));
-        }
         var savPromise = sRef.set(savings);
         var newSavingsItem = {};
         Object.assign(newSavingsItem, { amount: newAmount, savingsLineId: savingsLineId, initial: true });
         var siPromise = siRef.set(newSavingsItem);
         return Promise.all([savPromise, siPromise]);
-        var _a, _b;
     })["catch"](function (error) {
         console.log(error);
     });
@@ -68,41 +59,47 @@ exports.editSavingsLine = functions.database.ref('/savingsLines/{pushId}').onUpd
         console.log(error);
     });
 });
-exports.removeSavingsLine = functions.database.ref('/savings/{pushId}/lines/{pushId2}').onDelete(function (event) {
+exports.removeSavingsLine = functions.database.ref('/savingsLines/{pushId}').onDelete(function (event) {
     /*
       Funkcja wywoaływana podczas usuwania linii z savings
       1) usuń całą linię z savingLines
       2) usuń wszystkie savingItems dla savingLineId
   */
-    var savingId = event.params.pushId;
-    var savingLineId = event.params.pushId2;
+    // const savingId = event.params.pushId;
+    var savingsLineId = event.params.pushId;
+    var deletedSavingsLine = event.data.previous.val();
     var root = event.data.ref.root;
-    var slRef = root.child("/savingLines/" + savingLineId);
-    var slCashLeft = 0;
-    var savingItemIds = [];
+    //    const slRef = root.child(`/savingLines/${savingLineId}`);
+    var savingsItemsInSavingsLinesRef = root.child("/savingsItemsInSavingsLines/" + savingsLineId);
+    var linesInSavings = root.child("/linesInSavings/" + deletedSavingsLine.savingsId);
     var promisesArray = [];
-    return slRef.once('value')
+    return savingsItemsInSavingsLinesRef.once('value')
         .then(function (snap) {
-        var savingLine = snap.val();
-        slCashLeft = savingLine.cashLeft;
-        if (savingLine && savingLine.hasOwnProperty('savingItems')) {
-            Object.keys(savingLine.savingItems).forEach(function (key) {
-                promisesArray.push(root.child("/savingItems/" + key).remove());
-                //   return root.child(`/savingItems/${key}`).remove();
-            });
-        }
-        //     console.log("Rozmiar tabei promisesArray: ", promisesArray.length);
-        promisesArray.push(slRef.remove());
+        //usuwanie savingsItems
+        var savingsItemsInSavingsLines = snap.val();
+        Object.keys(savingsItemsInSavingsLines).forEach(function (key) {
+            promisesArray.push(root.child("/savingsItems/" + key).remove());
+        });
+        //       savingsItemsInSavingsLinesRef.remove();
+        promisesArray.push(savingsItemsInSavingsLinesRef.remove());
         return Promise.all(promisesArray);
     })
         .then(function () {
-        return root.child("/savings/" + savingId).once('value');
+        return linesInSavings.once('value');
     })
         .then(function (snap) {
-        var saving = snap.val();
+        var ls = snap.val();
+        ls[savingsLineId] = null;
+        return root.child("/linesInSavings/" + deletedSavingsLine.savingsId).update(ls);
+    })
+        .then(function () {
+        return root.child("/savings/" + deletedSavingsLine.savingsId).once('value');
+    })
+        .then(function (snap) {
+        var savings = snap.val();
         // console.log("Total cash przed redukcją: ", saving.totalCash, ", redukujemy o: ", slCashLeft);
-        saving.totalCash -= slCashLeft;
-        return root.child("/savings/" + savingId).set(saving);
+        savings.totalCash -= deletedSavingsLine.cashLeft;
+        return root.child("/savings/" + deletedSavingsLine.savingsId).set(savings);
     })["catch"](function (error) {
         console.log(error);
     });

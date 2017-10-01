@@ -2,7 +2,7 @@ import * as functions from 'firebase-functions';
 
 
 
-//version: 0.9.0
+//version: 0.12.0
 
 
 /******************************************************************
@@ -36,13 +36,6 @@ Funkcja wywoaływana podczas dodania nowej linii
         .then(snap => {
             const savings = snap.val();
             savings.totalCash += newAmount //dodaj różnicę
-            if (!savings.hasOwnProperty('lines')) {
-                //jeżeli nie ma żadnej linii to utwórz obiekt
-                (<any>Object).assign(savings, { lines: { [savingsLineId]: true } });
-            } else {
-                //w przeciwnym wypadku dodaj tylko referencję
-                (<any>Object).assign(savings.lines, { [savingsLineId]: true });
-            }
             let savPromise = sRef.set(savings);
             let newSavingsItem = {};
             (<any>Object).assign(newSavingsItem, { amount: newAmount, savingsLineId: savingsLineId, initial: true });
@@ -89,7 +82,7 @@ export let editSavingsLine = functions.database.ref('/savingsLines/{pushId}').on
 });
 
 
-export let removeSavingsLine = functions.database.ref('/savings/{pushId}/lines/{pushId2}').onDelete(event => {
+export let removeSavingsLine = functions.database.ref('/savingsLines/{pushId}').onDelete(event => {
     /*
       Funkcja wywoaływana podczas usuwania linii z savings
       1) usuń całą linię z savingLines
@@ -97,37 +90,47 @@ export let removeSavingsLine = functions.database.ref('/savings/{pushId}/lines/{
   */
 
 
-    const savingId = event.params.pushId;
-    const savingLineId = event.params.pushId2;
-
+    // const savingId = event.params.pushId;
+    const savingsLineId = event.params.pushId;
+    const deletedSavingsLine = event.data.previous.val();
 
     const root = event.data.ref.root;
-    const slRef = root.child(`/savingLines/${savingLineId}`);
-    let slCashLeft = 0;
-    let savingItemIds = [];
+    //    const slRef = root.child(`/savingLines/${savingLineId}`);
+
+    const savingsItemsInSavingsLinesRef = root.child(`/savingsItemsInSavingsLines/${savingsLineId}`);
+    const linesInSavings = root.child(`/linesInSavings/${deletedSavingsLine.savingsId}`);
+
     const promisesArray = [];
-    return slRef.once('value')
+    return savingsItemsInSavingsLinesRef.once('value')
         .then(snap => {
-            const savingLine = snap.val();
-            slCashLeft = savingLine.cashLeft;
-            if (savingLine && savingLine.hasOwnProperty('savingItems')) {
-                Object.keys(savingLine.savingItems).forEach(function (key) {
-                    promisesArray.push(root.child(`/savingItems/${key}`).remove());
-                    //   return root.child(`/savingItems/${key}`).remove();
-                });
-            }
-            //     console.log("Rozmiar tabei promisesArray: ", promisesArray.length);
-            promisesArray.push(slRef.remove());
+            //usuwanie savingsItems
+            const savingsItemsInSavingsLines = snap.val();
+
+            Object.keys(savingsItemsInSavingsLines).forEach(function (key) {
+                promisesArray.push(root.child(`/savingsItems/${key}`).remove());
+            });
+            //       savingsItemsInSavingsLinesRef.remove();
+
+            promisesArray.push(savingsItemsInSavingsLinesRef.remove());
+
             return Promise.all(promisesArray);
         })
-        .then(() => {
-            return root.child(`/savings/${savingId}`).once('value')
+        .then(()=>{
+            return linesInSavings.once('value')
         })
         .then(snap => {
-            const saving = snap.val();
+            const ls = snap.val();
+            ls[savingsLineId] = null;
+            return root.child(`/linesInSavings/${deletedSavingsLine.savingsId}`).update(ls);
+        })
+        .then(() => {
+            return root.child(`/savings/${deletedSavingsLine.savingsId}`).once('value');
+        })
+        .then(snap => {
+            const savings = snap.val();
             // console.log("Total cash przed redukcją: ", saving.totalCash, ", redukujemy o: ", slCashLeft);
-            saving.totalCash -= slCashLeft;
-            return root.child(`/savings/${savingId}`).set(saving)
+            savings.totalCash -= deletedSavingsLine.cashLeft;
+            return root.child(`/savings/${deletedSavingsLine.savingsId}`).set(savings);
         })
         .catch(error => {
             console.log(error);
@@ -143,12 +146,12 @@ export let addSavingsItem = functions.database.ref('/savingsItems/{pushId}').onC
   5) w odpowiedniej linii dodaj savingItem
 */
 
-/*
-    if (event.data.val().initial) {
-        return;
-    }
-
-    */
+    /*
+        if (event.data.val().initial) {
+            return;
+        }
+    
+        */
 
 
 
@@ -190,52 +193,52 @@ export let addSavingsItem = functions.database.ref('/savingsItems/{pushId}').onC
 
 
 export let addOutgo = functions.database
-.ref('/outgoes/{pushId}')
-.onCreate(event => {
-    /*
-Funkcja wywoaływana podczas dodania nowej pozycji w bazie outgoes
-1) dodaj outgo ID do odpowiedniej linii
-2) zmniejsz w linii cashLeft
-3) zwiększ w linii noOutgoes
-4) w budget zmniejsz cashLeft
-*/
+    .ref('/outgoes/{pushId}')
+    .onCreate(event => {
+        /*
+    Funkcja wywoaływana podczas dodania nowej pozycji w bazie outgoes
+    1) dodaj outgo ID do odpowiedniej linii
+    2) zmniejsz w linii cashLeft
+    3) zwiększ w linii noOutgoes
+    4) w budget zmniejsz cashLeft
+    */
 
-    let budgetId = null;
-    const outgoId = event.params.pushId;
-    const amount = event.data.val().amount;
-    const budgetLineId = event.data.val().budgetLineId;
-    const root = event.data.ref.root;
-    const blRef = root.child(`/budgetLines/${budgetLineId}`);
-    return blRef.once('value')
-        .then(snap => {
-            const budgetLine = snap.val();
-            if (!budgetLine.hasOwnProperty('noOutgoes')) {
-                //jeżeli nie ma żadnego outgo to utwórz noOutgoes z 0
-                (<any>Object).assign(budgetLine, { noOutgoes: 0 });
-            }
-            budgetLine.noOutgoes = ++budgetLine.noOutgoes;
-            budgetLine.cashLeft -= amount;
-            budgetId = budgetLine.budgetId;
-            if (!budgetLine.hasOwnProperty('outgoes')) {
-                //jeżeli nie ma żadnego outgo to utwórz obiekt
-                //     console.log("Nie ma property outgoes!");
-                (<any>Object).assign(budgetLine, { outges: { [outgoId]: true } });
-            } else {
-                //w przeciwnym wypadku dodaj tylko referencję
-                (<any>Object).assign(budgetLine.outgoes, { [outgoId]: true });
-            }
-            //   console.log("budgetLine from Cloud Functions: ", budgetLine);
-            return blRef.set(budgetLine)
-        }).then(() => {
-            return root.child(`/budgets/${budgetId}`).once('value')
-        })
-        .then(snap => {
-            const budget = snap.val();
-            budget.cashLeft -= amount;
-            return root.child(`/budgets/${budgetId}`).set(budget)
-        })
-        .catch(error => {
-            console.log(error);
-        })
+        let budgetId = null;
+        const outgoId = event.params.pushId;
+        const amount = event.data.val().amount;
+        const budgetLineId = event.data.val().budgetLineId;
+        const root = event.data.ref.root;
+        const blRef = root.child(`/budgetLines/${budgetLineId}`);
+        return blRef.once('value')
+            .then(snap => {
+                const budgetLine = snap.val();
+                if (!budgetLine.hasOwnProperty('noOutgoes')) {
+                    //jeżeli nie ma żadnego outgo to utwórz noOutgoes z 0
+                    (<any>Object).assign(budgetLine, { noOutgoes: 0 });
+                }
+                budgetLine.noOutgoes = ++budgetLine.noOutgoes;
+                budgetLine.cashLeft -= amount;
+                budgetId = budgetLine.budgetId;
+                if (!budgetLine.hasOwnProperty('outgoes')) {
+                    //jeżeli nie ma żadnego outgo to utwórz obiekt
+                    //     console.log("Nie ma property outgoes!");
+                    (<any>Object).assign(budgetLine, { outges: { [outgoId]: true } });
+                } else {
+                    //w przeciwnym wypadku dodaj tylko referencję
+                    (<any>Object).assign(budgetLine.outgoes, { [outgoId]: true });
+                }
+                //   console.log("budgetLine from Cloud Functions: ", budgetLine);
+                return blRef.set(budgetLine)
+            }).then(() => {
+                return root.child(`/budgets/${budgetId}`).once('value')
+            })
+            .then(snap => {
+                const budget = snap.val();
+                budget.cashLeft -= amount;
+                return root.child(`/budgets/${budgetId}`).set(budget)
+            })
+            .catch(error => {
+                console.log(error);
+            })
 
-});
+    });
