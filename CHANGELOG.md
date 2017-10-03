@@ -1,3 +1,6 @@
+0.13.0
+  * Fixing addSavingsLine
+
 0.12.0
   * Fixing removeSavingsLine
 

@@ -1,16 +1,8 @@
 import * as functions from 'firebase-functions';
-
-
-
-//version: 0.12.0
-
-
+//version: 0.13.0
 /******************************************************************
-
                     SAVINGS
-
  *******************************************************************/
-
 
 export let addSavingsLine = functions.database.ref('/savingsLines/{pushId}').onCreate(event => {
     /*
@@ -27,19 +19,23 @@ Funkcja wywoaływana podczas dodania nowej linii
 
 
     const root = event.data.ref.root;
-    const sRef = root.child(`/savings/${savingsId}`);
+    const savingsRef = root.child(`/savings/${savingsId}`);
 
     const newSavingsItemKey = root.child(`/savingsItems/`).push().key;
-    const siRef = root.child(`/savingsItems/${newSavingsItemKey}`);
+    const savingsItemsRef = root.child(`/savingsItems/${newSavingsItemKey}`);
+    const savingsItemsInSavingsLinesRef = root.child(`/savingsItemsInSavingsLines/`);
+    const linesInSavingsRef = root.child(`/linesInSavings/`);
     // console.log("New saving item key: ", newSavingItemKey);
-    return sRef.once('value')
+    return savingsRef.once('value')
         .then(snap => {
             const savings = snap.val();
             savings.totalCash += newAmount //dodaj różnicę
-            let savPromise = sRef.set(savings);
+            let savPromise = savingsRef.set(savings);
             let newSavingsItem = {};
             (<any>Object).assign(newSavingsItem, { amount: newAmount, savingsLineId: savingsLineId, initial: true });
-            let siPromise = siRef.set(newSavingsItem);
+            let siPromise = savingsItemsRef.set(newSavingsItem);
+            savingsItemsInSavingsLinesRef.child(`${savingsLineId}`).set({[newSavingsItemKey]: true});
+            linesInSavingsRef.child(`${savingsId}`).set({savingsLineId: true});
 
 
             return Promise.all([savPromise, siPromise]);
@@ -146,12 +142,12 @@ export let addSavingsItem = functions.database.ref('/savingsItems/{pushId}').onC
   5) w odpowiedniej linii dodaj savingItem
 */
 
-    /*
+    
         if (event.data.val().initial) {
             return;
         }
     
-        */
+        
 
 
 
@@ -167,13 +163,7 @@ export let addSavingsItem = functions.database.ref('/savingsItems/{pushId}').onC
             const savingsLine = snap.val();
             savingsLine.cashLeft += amount;
             savingsId = savingsLine.savingsId;
-            if (!savingsLine.hasOwnProperty('savingsItems')) {
-                //jeżeli nie ma żadnego outgo to utwórz obiekt
-                (<any>Object).assign(savingsLine, { savingsItems: { [savingsItemId]: true } });
-            } else {
-                //w przeciwnym wypadku dodaj tylko referencję
-                (<any>Object).assign(savingsLine.savingsItems, { [savingsItemId]: true });
-            }
+   
             return slRef.set(savingsLine)
         })
         .catch(error => {

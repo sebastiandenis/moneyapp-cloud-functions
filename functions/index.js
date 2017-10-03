@@ -1,11 +1,9 @@
 "use strict";
 exports.__esModule = true;
 var functions = require("firebase-functions");
-//version: 0.12.0
+//version: 0.13.0
 /******************************************************************
-
                     SAVINGS
-
  *******************************************************************/
 exports.addSavingsLine = functions.database.ref('/savingsLines/{pushId}').onCreate(function (event) {
     /*
@@ -18,19 +16,24 @@ Funkcja wywoaływana podczas dodania nowej linii
     var savingsLineId = event.params.pushId;
     var newAmount = event.data.val().cashLeft;
     var root = event.data.ref.root;
-    var sRef = root.child("/savings/" + savingsId);
+    var savingsRef = root.child("/savings/" + savingsId);
     var newSavingsItemKey = root.child("/savingsItems/").push().key;
-    var siRef = root.child("/savingsItems/" + newSavingsItemKey);
+    var savingsItemsRef = root.child("/savingsItems/" + newSavingsItemKey);
+    var savingsItemsInSavingsLinesRef = root.child("/savingsItemsInSavingsLines/");
+    var linesInSavingsRef = root.child("/linesInSavings/");
     // console.log("New saving item key: ", newSavingItemKey);
-    return sRef.once('value')
+    return savingsRef.once('value')
         .then(function (snap) {
         var savings = snap.val();
         savings.totalCash += newAmount; //dodaj różnicę
-        var savPromise = sRef.set(savings);
+        var savPromise = savingsRef.set(savings);
         var newSavingsItem = {};
         Object.assign(newSavingsItem, { amount: newAmount, savingsLineId: savingsLineId, initial: true });
-        var siPromise = siRef.set(newSavingsItem);
+        var siPromise = savingsItemsRef.set(newSavingsItem);
+        savingsItemsInSavingsLinesRef.child("" + savingsLineId).set((_a = {}, _a[newSavingsItemKey] = true, _a));
+        linesInSavingsRef.child("" + savingsId).set({ savingsLineId: true });
         return Promise.all([savPromise, siPromise]);
+        var _a;
     })["catch"](function (error) {
         console.log(error);
     });
@@ -112,12 +115,9 @@ exports.addSavingsItem = functions.database.ref('/savingsItems/{pushId}').onCrea
   4) w savings zmniejsz cashLeft (total)
   5) w odpowiedniej linii dodaj savingItem
 */
-    /*
-        if (event.data.val().initial) {
-            return;
-        }
-    
-        */
+    if (event.data.val().initial) {
+        return;
+    }
     var savingsId = null;
     var savingsItemId = event.params.pushId;
     var amount = event.data.val().amount;
@@ -130,16 +130,7 @@ exports.addSavingsItem = functions.database.ref('/savingsItems/{pushId}').onCrea
         var savingsLine = snap.val();
         savingsLine.cashLeft += amount;
         savingsId = savingsLine.savingsId;
-        if (!savingsLine.hasOwnProperty('savingsItems')) {
-            //jeżeli nie ma żadnego outgo to utwórz obiekt
-            Object.assign(savingsLine, { savingsItems: (_a = {}, _a[savingsItemId] = true, _a) });
-        }
-        else {
-            //w przeciwnym wypadku dodaj tylko referencję
-            Object.assign(savingsLine.savingsItems, (_b = {}, _b[savingsItemId] = true, _b));
-        }
         return slRef.set(savingsLine);
-        var _a, _b;
     })["catch"](function (error) {
         console.log(error);
     });
