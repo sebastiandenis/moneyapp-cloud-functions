@@ -1,5 +1,5 @@
 import * as functions from 'firebase-functions';
-//version: 0.13.2
+//version: 0.13.3
 /******************************************************************
                     SAVINGS
  *******************************************************************/
@@ -35,7 +35,7 @@ Funkcja wywoaływana podczas dodania nowej linii
             (<any>Object).assign(newSavingsItem, { amount: newAmount, savingsLineId: savingsLineId, initial: true });
             let siPromise = savingsItemsRef.set(newSavingsItem);
             savingsItemsInSavingsLinesRef.child(`${savingsLineId}`).set({[newSavingsItemKey]: true});
-            linesInSavingsRef.child(`${savingsId}`).push({[savingsLineId]: true});
+            linesInSavingsRef.child(`${savingsId}`).update({[savingsLineId]: true});
 
 
             return Promise.all([savPromise, siPromise]);
