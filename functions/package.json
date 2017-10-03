@@ -1,6 +1,6 @@
 {
   "name": "functions",
-  "version": "0.13.0",
+  "version": "0.13.2",
   "description": "Cloud Functions for my Firebase App",
   "dependencies": {
     "firebase-admin": "~5.3.0",

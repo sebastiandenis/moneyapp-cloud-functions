@@ -1,7 +1,7 @@
 "use strict";
 exports.__esModule = true;
 var functions = require("firebase-functions");
-//version: 0.13.0
+//version: 0.13.2
 /******************************************************************
                     SAVINGS
  *******************************************************************/
@@ -31,9 +31,9 @@ Funkcja wywoaływana podczas dodania nowej linii
         Object.assign(newSavingsItem, { amount: newAmount, savingsLineId: savingsLineId, initial: true });
         var siPromise = savingsItemsRef.set(newSavingsItem);
         savingsItemsInSavingsLinesRef.child("" + savingsLineId).set((_a = {}, _a[newSavingsItemKey] = true, _a));
-        linesInSavingsRef.child("" + savingsId).set({ savingsLineId: true });
+        linesInSavingsRef.child("" + savingsId).push((_b = {}, _b[savingsLineId] = true, _b));
         return Promise.all([savPromise, siPromise]);
-        var _a;
+        var _a, _b;
     })["catch"](function (error) {
         console.log(error);
     });
